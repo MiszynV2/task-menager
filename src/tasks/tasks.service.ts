@@ -2,53 +2,75 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { TaskStatus } from './tasks-status.enum';
 import { CreateTaskDto } from 'src/tasks/dto/create-task.dto';
 import { getAllTasksFilterDto } from 'src/tasks/dto/get-tasks-filter.dto';
+import { TaskRepository } from './task.repository';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Task } from './task.entity';
 @Injectable()
 export class TasksService {
-  // getTasks(): Task[] {
-  //   return this.tasks;
-  // }
-  // getTasksWithFilters(filterDto: getAllTasksFilterDto): Task[] {
-  //   const { status, search } = filterDto;
-  //   let tasks = this.getTasks();
-  //   if (status) {
-  //     tasks = tasks.filter((task) => task.status === status);
-  //   }
-  //   if (search) {
-  //     tasks = tasks.filter(
-  //       (task) => task.title.match(search) || task.description.match(search),
-  //     );
-  //   }
-  //   return tasks;
-  // }
-  // //: Task[] dlaczego nie dziala
-  // getSpecificTask(id): Task {
-  //   const found = this.tasks.find((task) => id === task.id);
-  //   if (!found) {
-  //     throw new NotFoundException(`task with id ${id} is not found`);
-  //   }
-  //   return found;
-  // }
-  // createTask(CreateTaskDto: CreateTaskDto): Task {
-  //   //const { title, description } = CreateTaskDto;
-  //   const task: Task = {
-  //     id: uuid(),
-  //     ...CreateTaskDto,
-  //     status: TaskStatus.OPEN,
-  //   };
-  //   this.tasks.push(task);
-  //   return task;
-  // }
-  // deleteSpecificTask(id): Task {
-  //   let findTask = this.getSpecificTask(id);
-  //   const deleted = this.tasks.find((task) => id === findTask.id);
-  //   this.tasks = this.tasks.filter((task) => id !== findTask.id);
-  //   return deleted;
-  // }
-  // //task status must be a valid status
-  // //search term must be not empty
-  // patchSpecificTaskStatus(id: string, status: TaskStatus) {
-  //   let findTaskToPatch = this.getSpecificTask(id);
-  //   findTaskToPatch.status = status;
-  //   return findTaskToPatch;
-  // }
+  constructor(
+    @InjectRepository(Task)
+    private taskRepository: TaskRepository,
+  ) {}
+
+  async getTasks(filterDto): Promise<Task[]> {
+    let queryBuilder = this.taskRepository.createQueryBuilder();
+    console.log(filterDto);
+
+    if (filterDto.status) {
+      queryBuilder = queryBuilder.where({ status: filterDto.status });
+    }
+
+    if (filterDto.search) {
+      queryBuilder = queryBuilder.andWhere(
+        'LOWER(description) LIKE :search OR LOWER(title) LIKE :search',
+        {
+          search: `%${filterDto.search.toLowerCase()}%`,
+        },
+      );
+    }
+
+    const tasks = await queryBuilder.getMany();
+    return tasks;
+  }
+
+  async getSpecificTask(id: string): Promise<Task> {
+    const found = await this.taskRepository.findOne({
+      where: [{ id: id }],
+    });
+
+    if (!found) {
+      throw new NotFoundException(`task with id ${id} is not found`);
+    }
+
+    return found;
+  }
+
+  async createTask(createTaskDto: CreateTaskDto): Promise<Task> {
+    const { title, description } = createTaskDto;
+    const task: Task = this.taskRepository.create({
+      ...createTaskDto,
+      status: TaskStatus.OPEN,
+    });
+    await this.taskRepository.save(task);
+    return task;
+  }
+  async deleteSpecificTask(id): Promise<object> {
+    const result = await this.taskRepository.delete(id);
+    console.log(result);
+    if (result.affected === 0) {
+      throw new NotFoundException(`task with id ${id} is not found`);
+    }
+    return result;
+  }
+
+  async patchSpecificTask(id: string, status: TaskStatus): Promise<void> {
+    const task = this.getSpecificTask(id);
+    const result = await this.taskRepository
+      .createQueryBuilder()
+      .update(Task)
+      .set({ status: status })
+      .where(task)
+      .execute();
+    console.log(result);
+  }
 }
