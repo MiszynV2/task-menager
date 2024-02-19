@@ -35,7 +35,7 @@ export class TasksService {
 
   async getSpecificTask(id: string): Promise<Task> {
     const found = await this.taskRepository.findOne({
-      where: [{ id: id }],
+      where: [{ id }],
     });
 
     if (!found) {
